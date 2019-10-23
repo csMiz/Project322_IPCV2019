@@ -14,6 +14,39 @@ Module W4
     Public Sub S_L1()
 
         Dim image As Mat = Imread(AppDomain.CurrentDomain.BaseDirectory & "mandrillRGB.jpg", ImreadModes.Grayscale)
+        Dim resultM As Mat = GetEdgeMagnitude(image)
+        Dim hough As New Mat(New Size(180, 724), DepthType.Cv8U, 1)
+        For j = 0 To 723
+            For i = 0 To 179
+                Mat_SetPixel_1(hough, j, i, 0)
+            Next
+        Next
+
+        'hough transformation
+        For j = 250 To 250 'resultM.Cols - 2
+            For i = 250 To 250 ' resultM.Rows - 2
+                Dim dot As Single = BitConverter.ToSingle(resultM.GetRawData(j, i), 0)
+                For m = 0 To 179
+                    Dim theta As Single = (m - 90.0F) * Math.PI / 180.0F
+                    Dim k1 As Single = Math.Tan(m * Math.PI / 180.0F)
+                    Dim b1 As Single = j - i * k1
+                    Dim k2 As Single = -1 / k1
+                    Dim rx As Single = (-b1) / (k1 - k2)
+                    Dim distance As Single = Math.Abs(rx / Math.Cos(theta))
+
+                    Mat_SetPixel_1(hough, distance, m, 255)
+                Next
+            Next
+        Next
+
+        Imshow("Hough Plane", hough)
+        WaitKey(0)
+
+
+
+    End Sub
+
+    Private Function GetEdgeMagnitude(image As Mat) As Mat
         Dim resultH As New Mat(image.Size, DepthType.Cv32F, 1)
         Dim resultV As New Mat(image.Size, DepthType.Cv32F, 1)
         Dim resultM As New Mat(image.Size, DepthType.Cv32F, 1)
@@ -55,18 +88,11 @@ Module W4
         Normalize(resultV, resultV, 0.0F, 1.0F, NormType.MinMax)
         Normalize(resultM, resultM, 0.0F, 1.0F, NormType.MinMax)
 
-        Imshow("source", image)
-        Imshow("edgeH", resultH)
-        Imshow("edgeV", resultV)
-        Imshow("edgeM", resultM)
-        WaitKey(0)
-
-        image.Dispose()
         resultH.Dispose()
         resultV.Dispose()
-        resultM.Dispose()
 
-    End Sub
+        Return resultM
 
+    End Function
 
 End Module
