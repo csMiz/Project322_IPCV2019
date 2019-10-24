@@ -13,36 +13,69 @@ Module W4
     ''' </summary>
     Public Sub S_L1()
 
-        Dim image As Mat = Imread(AppDomain.CurrentDomain.BaseDirectory & "mandrillRGB.jpg", ImreadModes.Grayscale)
+        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "tri.png"
+
+        Dim image As Mat = Imread(path, ImreadModes.Grayscale)
         Dim resultM As Mat = GetEdgeMagnitude(image)
-        Dim hough As New Mat(New Size(180, 724), DepthType.Cv8U, 1)
-        For j = 0 To 723
+        Dim hough As New Mat(New Size(180, 145), DepthType.Cv8U, 1)
+        For j = 0 To 144
             For i = 0 To 179
                 Mat_SetPixel_1(hough, j, i, 0)
             Next
         Next
 
         'hough transformation
-        For j = 250 To 250 'resultM.Cols - 2
-            For i = 250 To 250 ' resultM.Rows - 2
+        For j = 1 To resultM.Rows - 2
+            For i = 1 To resultM.Cols - 2
                 Dim dot As Single = BitConverter.ToSingle(resultM.GetRawData(j, i), 0)
-                For m = 0 To 179
-                    Dim theta As Single = (m - 90.0F) * Math.PI / 180.0F
-                    Dim k1 As Single = Math.Tan(m * Math.PI / 180.0F)
-                    Dim b1 As Single = j - i * k1
-                    Dim k2 As Single = -1 / k1
-                    Dim rx As Single = (-b1) / (k1 - k2)
-                    Dim distance As Single = Math.Abs(rx / Math.Cos(theta))
+                If dot > 0.5F Then
+                    For m = 1 To 179
+                        If m = 90 Then Continue For
 
-                    Mat_SetPixel_1(hough, distance, m, 255)
-                Next
+                        Dim theta As Single = (m - 90.0F) * Math.PI / 180.0F
+                        Dim k1 As Single = Math.Tan(m * Math.PI / 180.0F)
+                        Dim b1 As Single = j - i * k1
+                        Dim k2 As Single = -1 / k1
+                        Dim rx As Single = (-b1) / (k1 - k2)
+                        Dim distance As Single = Math.Abs(rx / Math.Cos(theta))
+                        Dim dis_y As Integer = distance / 5
+
+                        Dim lastValue As Integer = hough.GetRawData(dis_y, m)(0)
+                        Dim thisValue As Integer = lastValue + 1
+                        If thisValue > 255 Then thisValue = 255
+                        Mat_SetPixel_1(hough, dis_y, m, CByte(thisValue))
+                    Next
+                End If
             Next
         Next
 
+        Imshow("mag", resultM)
         Imshow("Hough Plane", hough)
+
+        Dim ori_image As Mat = Imread(path, ImreadModes.Color)
+
+        For j = 1 To hough.Rows - 2
+            For i = 1 To hough.Cols - 2
+                If i = 90 Then Continue For
+                Dim dot As Byte = hough.GetRawData(j, i)(0)
+                If dot > 200 Then
+                    Dim dis As Single = j * 5
+                    Dim theta As Single = (180 - i) * Math.PI / 180
+                    Dim p1 As New Point(0, dis / Math.Cos(theta))
+                    Dim p2 As New Point(image.Cols - 1, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)))
+
+                    Line(ori_image, p1, p2, New MCvScalar(0, 0, 255))
+                End If
+            Next
+        Next
+
+        Imshow("image", ori_image)
         WaitKey(0)
 
-
+        image.Dispose()
+        resultM.Dispose()
+        hough.Dispose()
+        ori_image.Dispose()
 
     End Sub
 
