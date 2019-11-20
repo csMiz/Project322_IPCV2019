@@ -8,37 +8,65 @@ Imports System.Drawing
 
 Module W4
 
-    ''' <summary>
-    ''' 霍夫变换：圆
-    ''' </summary>
-    Public Sub S_L1S2()
+    Public Sub S_L1S4()
 
-        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "coins1.png"
-        Dim threshold_m As Single = 0.7F
         Dim threshold_h As Single = 0.5F
 
-        Dim image As Mat = Imread(path, ImreadModes.Grayscale)
-        Dim ori_image As Mat = Imread(path, ImreadModes.Color)
-        Dim resultM As Mat = GetEdgeMagnitude(image)
-        Imshow("Magnitude", resultM)
+        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "coins3.png"
+        Dim bigImage As Mat = Imread(path, ImreadModes.Color)
+        Dim image As New Mat(New Size(bigImage.Width / 2, bigImage.Height / 2), DepthType.Cv8U, 3)
+        For j = 0 To bigImage.Rows - 1 Step 2
+            For i = 0 To bigImage.Cols - 1 Step 2
+                Dim v As Byte() = bigImage.GetRawData(j, i)
+                Mat_SetPixel_3(image, j / 2, i / 2, v)
+            Next
+        Next
+
+        Dim redChan As New Mat(image.Size, DepthType.Cv8U, 1)
+        Dim greenChan As New Mat(image.Size, DepthType.Cv8U, 1)
+        Dim blueChan As New Mat(image.Size, DepthType.Cv8U, 1)
+        For j = 0 To image.Rows - 1
+            For i = 0 To image.Cols - 1
+                Dim v As Byte() = image.GetRawData(j, i)
+                Mat_SetPixel_1(redChan, j, i, v(2))
+                Mat_SetPixel_1(greenChan, j, i, v(1))
+                Mat_SetPixel_1(blueChan, j, i, v(0))
+            Next
+        Next
+        Dim mag_r As Mat = GetEdgeMagnitude(redChan)
+        Dim mag_g As Mat = GetEdgeMagnitude(greenChan)
+        Dim mag_b As Mat = GetEdgeMagnitude(blueChan)
+        Dim mag As New Mat(image.Size, DepthType.Cv32F, 1)
+        For j = 0 To image.Rows - 1
+            For i = 0 To image.Cols - 1
+                Dim vr As Single = BitConverter.ToSingle(mag_r.GetRawData(j, i), 0)
+                Dim vg As Single = BitConverter.ToSingle(mag_g.GetRawData(j, i), 0)
+                Dim vb As Single = BitConverter.ToSingle(mag_b.GetRawData(j, i), 0)
+                Dim max As Single = {vr, vg, vb}.Max
+                Mat_SetPixel_4(mag, j, i, BitConverter.GetBytes(max))
+            Next
+        Next
+        Threshold(mag, mag, 0.4F, 1.0F, ThresholdType.Binary)
+        'Imshow("Source", image)
+        Imshow("Magnitude", mag)
 
         Dim imageWidth As Integer = image.Cols
         Dim imageHeight As Integer = image.Rows
         Dim maxSide As Integer = {imageWidth, imageHeight}.Max
-        Dim maxR As Integer = maxSide * 0.707F
+        Dim maxR As Integer = maxSide * 0.6F
 
         Dim hough(imageWidth, imageHeight, maxR) As Integer
         'hough transformation
-        For j = 1 To resultM.Rows - 2
-            For i = 1 To resultM.Cols - 2
-                Dim dot As Single = BitConverter.ToSingle(resultM.GetRawData(j, i), 0)
-                If dot > threshold_m Then
-                    For r = 1 To maxR - 1
-                        For degree_i = 0 To 359
+        For j = 1 To mag.Rows - 2
+            For i = 1 To mag.Cols - 2
+                Dim dot As Single = BitConverter.ToSingle(mag.GetRawData(j, i), 0)
+                If dot > 0.5 Then
+                    For r = 10 To maxR - 1
+                        For degree_i = 0 To 359 Step 2
                             Dim angle As Single = degree_i * Math.PI / 180.0F
 
                             Dim x0 As Integer = i + r * Math.Cos(angle)
-                            Dim y0 As Integer = i + r * Math.Sin(angle)
+                            Dim y0 As Integer = j + r * Math.Sin(angle)
 
                             If x0 >= 0 AndAlso x0 < imageWidth AndAlso y0 >= 0 AndAlso y0 < imageHeight Then
                                 hough(x0, y0, r) += 1
@@ -50,36 +78,323 @@ Module W4
             Next
         Next
 
-        Dim hough_image As New Mat(New Size(imageWidth, imageHeight), DepthType.Cv32F, 1)
-        Dim h2(imageWidth, imageHeight) As Integer
-        Dim h2m As Integer = 0
-        Dim h2mx As Integer, h2my As Integer
-        For j = 1 To resultM.Rows - 2
-            For i = 1 To resultM.Cols - 2
-                Dim value As Single = 0.0F
+        Dim maxHoughValue As Integer = 0
+        For j = 0 To imageHeight - 1
+            For i = 0 To imageWidth - 1
                 For r = 1 To maxR - 1
-                    value += hough(i, j, r)
+                    If hough(i, j, r) > maxHoughValue Then
+                        maxHoughValue = hough(i, j, r)
+                    End If
                 Next
-
-                h2(i, j) = value
-                If value > h2m Then
-                    h2m = value
-                    h2mx = i
-                    h2my = j
-                End If
-
-                Mat_SetPixel_4(hough_image, j, i, BitConverter.GetBytes(value))
             Next
         Next
-        Normalize(hough_image, hough_image, 0.0F, 1.0F, NormType.MinMax)
-        Imshow("hough", hough_image)
+
+        Dim circleList As New List(Of HoughCircle)
+        For r = maxR - 1 To 10 Step -1
+            For j = 0 To imageHeight - 1
+                For i = 0 To imageWidth - 1
+                    For Each cir As HoughCircle In circleList
+                        If Math.Sqrt((i - cir.X) ^ 2 + (j - cir.Y) ^ 2) + r <= cir.R * 1.2 Then
+                            GoTo lbl_nextdot
+                        End If
+                    Next
+                    Dim value As Integer = hough(i, j, r)
+                    If value > maxHoughValue * threshold_h Then
+                        Dim newCircle As New HoughCircle(i, j, r)
+                        circleList.Add(newCircle)
+                    End If
+lbl_nextdot:
+                Next
+            Next
+        Next
+
+        Dim finalCircleList As New List(Of HoughCircle)
+        If circleList.Count > 0 Then
+            finalCircleList.Add(circleList(0))
+        End If
+        If circleList.Count > 1 Then
+            For i = 1 To circleList.Count - 1
+                Dim thisCircle As HoughCircle = circleList(i)
+                Dim valid As Boolean = True
+                For Each target As HoughCircle In finalCircleList
+                    If Math.Sqrt((thisCircle.X - target.X) ^ 2 + (thisCircle.Y - target.Y) ^ 2) + thisCircle.R <= target.R * 1.2 Then
+                        valid = False
+                        Exit For
+                    End If
+                Next
+                If valid Then
+                    finalCircleList.Add(thisCircle)
+                End If
+            Next
+        End If
+
+        For Each cir As HoughCircle In finalCircleList
+            Circle(bigImage, New Point(cir.X * 2, cir.Y * 2), cir.R * 2, New MCvScalar(0, 0, 255))
+        Next
+
+        Imshow("result", bigImage)
+
+        WaitKey(0)
+
+        image.Dispose()
+        mag.Dispose()
+
+    End Sub
+
+    Public Sub S_L1S3()
+
+        Dim threshold_h As Single = 0.55F
+
+        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "coins2.png"
+        Dim bigImage As Mat = Imread(path, ImreadModes.Color)
+        Dim image As New Mat(New Size(bigImage.Width / 2, bigImage.Height / 2), DepthType.Cv8U, 3)
+        For j = 0 To bigImage.Rows - 1 Step 2
+            For i = 0 To bigImage.Cols - 1 Step 2
+                Dim v As Byte() = bigImage.GetRawData(j, i)
+                Mat_SetPixel_3(image, j / 2, i / 2, v)
+            Next
+        Next
+
+        Dim greyImage As New Mat
+        CvtColor(image, greyImage, ColorConversion.Bgr2Gray)
+        Dim mag As Mat = GetEdgeMagnitude(greyImage)
+        Threshold(mag, mag, 0.5, 1.0F, ThresholdType.Binary)
+        'Imshow("Source", image)
+        Imshow("Magnitude", mag)
+
+        Dim imageWidth As Integer = image.Cols
+        Dim imageHeight As Integer = image.Rows
+        Dim maxSide As Integer = {imageWidth, imageHeight}.Max
+        Dim maxR As Integer = maxSide * 0.6F
+
+        Dim hough(imageWidth, imageHeight, maxR) As Integer
+        'hough transformation
+        For j = 1 To mag.Rows - 2
+            For i = 1 To mag.Cols - 2
+                Dim dot As Single = BitConverter.ToSingle(mag.GetRawData(j, i), 0)
+                If dot > 0.5 Then
+                    For r = 10 To maxR - 1
+                        For degree_i = 0 To 359 Step 2
+                            Dim angle As Single = degree_i * Math.PI / 180.0F
+
+                            Dim x0 As Integer = i + r * Math.Cos(angle)
+                            Dim y0 As Integer = j + r * Math.Sin(angle)
+
+                            If x0 >= 0 AndAlso x0 < imageWidth AndAlso y0 >= 0 AndAlso y0 < imageHeight Then
+                                hough(x0, y0, r) += 1
+                            End If
+
+                        Next
+                    Next
+                End If
+            Next
+        Next
+
+        Dim maxHoughValue As Integer = 0
+        For j = 0 To imageHeight - 1
+            For i = 0 To imageWidth - 1
+                For r = 1 To maxR - 1
+                    If hough(i, j, r) > maxHoughValue Then
+                        maxHoughValue = hough(i, j, r)
+                    End If
+                Next
+            Next
+        Next
+
+        Dim circleList As New List(Of HoughCircle)
+        For r = maxR - 1 To 10 Step -1
+            For j = 0 To imageHeight - 1
+                For i = 0 To imageWidth - 1
+                    For Each cir As HoughCircle In circleList
+                        If (i - cir.X) ^ 2 + (j - cir.Y) ^ 2 <= (cir.R) ^ 2 Then
+                            GoTo lbl_nextdot
+                        End If
+                    Next
+                    Dim value As Integer = hough(i, j, r)
+                    If value > maxHoughValue * threshold_h Then
+                        Dim newCircle As New HoughCircle(i, j, r)
+                        circleList.Add(newCircle)
+                    End If
+lbl_nextdot:
+                Next
+            Next
+        Next
+
+        Dim finalCircleList As New List(Of HoughCircle)
+        If circleList.Count > 0 Then
+            finalCircleList.Add(circleList(0))
+        End If
+        If circleList.Count > 1 Then
+            For i = 1 To circleList.Count - 1
+                Dim thisCircle As HoughCircle = circleList(i)
+                Dim valid As Boolean = True
+                For Each target As HoughCircle In finalCircleList
+                    If (thisCircle.X - target.X) ^ 2 + (thisCircle.Y - target.Y) ^ 2 < (target.R) ^ 2 Then
+                        valid = False
+                        Exit For
+                    End If
+                Next
+                If valid Then
+                    finalCircleList.Add(thisCircle)
+                End If
+            Next
+        End If
+
+        For Each cir As HoughCircle In finalCircleList
+            Circle(image, cir.GetPoint, cir.R, New MCvScalar(0, 0, 255))
+        Next
+
+        Imshow("result", image)
+
+        WaitKey(0)
+
+        image.Dispose()
+        greyImage.Dispose()
+        mag.Dispose()
+
+    End Sub
+
+    ''' <summary>
+    ''' 霍夫变换：圆
+    ''' </summary>
+    Public Sub S_L1S2()
+
+        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "coins1.png"
+        Dim threshold_m As Single = 0.5F
+        Dim threshold_h As Single = 0.4F
+
+        Dim image As Mat = Imread(path, ImreadModes.Grayscale)
+        Dim ori_image As Mat = Imread(path, ImreadModes.Color)
+
+        Dim lightImage As Mat = New Mat
+        CvtColor(ori_image, lightImage, ColorConversion.Bgr2Hsv)
+        For j = 1 To image.Rows - 2
+            For i = 1 To image.Cols - 2
+                Dim v As Byte() = lightImage.GetRawData(j, i)
+                Dim v_int As Integer = v(2)
+                v_int *= 2
+                If v_int > 255 Then v_int = 255
+                v(2) = v_int
+                Mat_SetPixel_3(lightImage, j, i, v)
+            Next
+        Next
+        CvtColor(lightImage, lightImage, ColorConversion.Hsv2Bgr)
+
+        Dim resultM As Mat = GetEdgeMagnitude(lightImage)
+        Threshold(resultM, resultM, threshold_m, 1.0F, ThresholdType.Binary)
+        Imshow("Magnitude", resultM)
+
+        Dim imageWidth As Integer = image.Cols
+        Dim imageHeight As Integer = image.Rows
+        Dim maxSide As Integer = {imageWidth, imageHeight}.Max
+        Dim maxR As Integer = maxSide * 0.353F
+
+        Dim hough(imageWidth, imageHeight, maxR) As Integer
+        'hough transformation
+        For j = 1 To resultM.Rows - 2
+            For i = 1 To resultM.Cols - 2
+                Dim dot As Single = BitConverter.ToSingle(resultM.GetRawData(j, i), 0)
+                If dot > threshold_m Then
+                    For r = 10 To maxR - 1
+                        For degree_i = 0 To 359 Step 2
+                            Dim angle As Single = degree_i * Math.PI / 180.0F
+
+                            Dim x0 As Integer = i + r * Math.Cos(angle)
+                            Dim y0 As Integer = j + r * Math.Sin(angle)
+
+                            If x0 >= 0 AndAlso x0 < imageWidth AndAlso y0 >= 0 AndAlso y0 < imageHeight Then
+                                hough(x0, y0, r) += 1
+                            End If
+
+                        Next
+                    Next
+                End If
+            Next
+        Next
+
+        Dim maxHoughValue As Integer = 0
+        For j = 0 To imageHeight - 1
+            For i = 0 To imageWidth - 1
+                For r = 1 To maxR - 1
+                    If hough(i, j, r) > maxHoughValue Then
+                        maxHoughValue = hough(i, j, r)
+                    End If
+                Next
+            Next
+        Next
+
+        Dim houghImage As New Mat(image.Size, DepthType.Cv32F, 1)
+        For j = 0 To imageHeight - 1
+            For i = 0 To imageWidth - 1
+                Mat_SetPixel_4(houghImage, j, i, BitConverter.GetBytes(0.0F))
+            Next
+        Next
+        For j = 0 To imageHeight - 1
+            For i = 0 To imageWidth - 1
+                For r = 1 To maxR - 1
+                    If hough(i, j, r) > 30 Then
+                        Dim getV As Single = BitConverter.ToSingle(houghImage.GetRawData(j, i), 0)
+                        getV += 1.0F
+                        Mat_SetPixel_4(houghImage, j, i, BitConverter.GetBytes(getV))
+                    End If
+                Next
+            Next
+        Next
+        Normalize(houghImage, houghImage, 0.0, 1.0, NormType.MinMax)
+        Imshow("hough", houghImage)
+
+        Dim circleList As New List(Of KeyValuePair(Of Point, Integer))
+        For r = maxR - 1 To 10 Step -1
+            For j = 0 To imageHeight - 1
+                For i = 0 To imageWidth - 1
+                    For Each cir As KeyValuePair(Of Point, Integer) In circleList
+                        If (i - cir.Key.X) ^ 2 + (j - cir.Key.Y) ^ 2 <= (cir.Value * 1.2) ^ 2 Then
+                            GoTo lbl_nextdot
+                        End If
+                    Next
+                    Dim value As Integer = hough(i, j, r)
+                    If value > maxHoughValue * threshold_h Then
+                        Dim kvp As New KeyValuePair(Of Point, Integer)(New Point(i, j), r)
+                        circleList.Add(kvp)
+                    End If
+lbl_nextdot:
+                Next
+            Next
+        Next
+
+        Dim finalCircleList As New List(Of KeyValuePair(Of Point, Integer))
+        If circleList.Count > 0 Then
+            finalCircleList.Add(circleList(0))
+        End If
+        If circleList.Count > 1 Then
+            For i = 1 To circleList.Count - 1
+                Dim thisCircle As KeyValuePair(Of Point, Integer) = circleList(i)
+                Dim valid As Boolean = True
+                For Each target As KeyValuePair(Of Point, Integer) In finalCircleList
+                    If (thisCircle.Key.X - target.Key.X) ^ 2 + (thisCircle.Key.Y - target.Key.Y) ^ 2 < (target.Value * 1.2) ^ 2 Then
+                        valid = False
+                        Exit For
+                    End If
+                Next
+                If valid Then
+                    finalCircleList.Add(thisCircle)
+                End If
+            Next
+        End If
+
+        For Each cir As KeyValuePair(Of Point, Integer) In finalCircleList
+            Circle(ori_image, cir.Key, cir.Value, New MCvScalar(0, 0, 255))
+        Next
+
+        Imshow("result", ori_image)
         WaitKey(0)
 
 
         image.Dispose()
-        'ori_image.Dispose()
+        ori_image.Dispose()
+        lightImage.Dispose()
         resultM.Dispose()
-
+        houghImage.Dispose()
 
 
     End Sub
@@ -212,5 +527,27 @@ Module W4
         Return resultM
 
     End Function
+
+    Private Class HoughCircle
+
+        Public X As Integer
+
+        Public Y As Integer
+
+        Public R As Integer
+
+        Public ReadOnly Property GetPoint
+            Get
+                Return New Point(X, Y)
+            End Get
+        End Property
+
+        Public Sub New(inputX As Integer, inputY As Integer, inputR As Integer)
+            X = inputX
+            Y = inputY
+            R = inputR
+        End Sub
+
+    End Class
 
 End Module
