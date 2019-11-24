@@ -6,7 +6,7 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{CA654079-8224-48E8-B920-728F17E93149}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <StartupObject>OCV_W1.Module1</StartupObject>
+    <StartupObject>Sub Main</StartupObject>
     <RootNamespace>OCV_W1</RootNamespace>
     <AssemblyName>OCV_W1</AssemblyName>
     <FileAlignment>512</FileAlignment>
@@ -108,6 +108,7 @@
     <Compile Include="W3.vb" />
     <Compile Include="W4.vb" />
     <Compile Include="W5.vb" />
+    <Compile Include="W8.vb" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="My Project\Resources.resx">
