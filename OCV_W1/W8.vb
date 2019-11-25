@@ -16,6 +16,7 @@ Module W8
     'Private Negative As New List(Of Mat)
     Private SampleList As New List(Of MyImageSample)
     Private WeakClassifierOutput As New List(Of MyWeakOutput)
+    Private StrongClassifierOutput As New List(Of MyStrongOutput)
 
 
     ''' <summary>
@@ -28,7 +29,9 @@ Module W8
         S_Haar()
         S_LoadTrain()
         S_AdaBoost()
+        S_AdaBoost_Strong()
 
+        S_PrintSampleInfo()
 
     End Sub
 
@@ -166,14 +169,77 @@ Module W8
                 Exit For
             End If
         Next
+        If minER <= 0.5 Then Throw New Exception
 
         Dim result As New MyWeakOutput
         result.Feature = HaarFeatureList(minIndex)
-        'result.weight
+        Dim betaT As Single = minER / (1 - minER)
+        result.Weight = Math.Log10(1 / betaT)
         WeakClassifierOutput.Add(result)
 
         'step 3: update weight
+        For Each sample As MyImageSample In SampleList
+            Dim fValue As Single = sample.CalculateE(result.Feature, True)
+            If fValue < 0.5 Then
+                sample.Weight = sample.Weight * betaT
+            End If
+        Next
 
+
+    End Sub
+
+    Public Sub S_AdaBoost_Strong()
+
+        'step 4: strong classifier
+        Dim strong1 As New MyStrongOutput
+        For i = 0 To 1
+            strong1.WeakInput.Add(WeakClassifierOutput(i))
+        Next
+        strong1.SetWeight()
+
+        StrongClassifierOutput.Add(strong1)
+
+        For j = 3 To 25
+            Dim tmpStrong As New MyStrongOutput
+            For i = 0 To j - 1
+                tmpStrong.WeakInput.Add(WeakClassifierOutput(i))
+            Next
+
+
+            Dim tp As Integer = 0
+            Dim fp As Integer = 0
+            Dim fn As Integer = 0
+            Dim tn As Integer = 0
+
+            For Each sample As MyImageSample In SampleList
+                Dim result As Integer = tmpStrong.Classify(sample)
+                If result = 1 AndAlso CInt(sample.Classification) = 1 Then
+                    tp += 1
+                ElseIf result = 1 AndAlso CInt(sample.Classification) = 0 Then
+                    fp += 1
+                ElseIf result = 0 AndAlso CInt(sample.Classification) = 1 Then
+                    fn += 1
+                ElseIf result = 0 AndAlso CInt(sample.Classification) = 0 Then
+                    tn += 1
+                End If
+            Next
+
+            'false positive rate = fp / (fp+tn)
+            Dim fpr As Single = fp / (fp + tn)
+            'recall = tp / (tp+fn)
+            Dim recall As Single = tp / (tp + fn)
+
+        Next
+
+
+    End Sub
+
+    Public Sub S_PrintSampleInfo()
+        For i = 0 To SampleList.Count - 1
+            Dim sample As MyImageSample = SampleList(i)
+            Debug.WriteLine(CStr(i) & ": Class=" & CInt(sample.Classification) & " Weight=" & sample.Weight)
+
+        Next
 
     End Sub
 
@@ -241,6 +307,8 @@ Module W8
 
         End Sub
 
+
+
     End Class
 
     Private Class MyImageSample
@@ -249,7 +317,7 @@ Module W8
         Public Classification As Single = 0.0F
         Public Weight As Single = 0.0F
 
-        Public Function CalculateE(haar As MyHaarLikeFeature) As Single
+        Public Function CalculateE(haar As MyHaarLikeFeature, Optional isRaw As Boolean = False) As Single
 
             Dim haarFeatureValue As Single = 0.0F
             If haar.HaarType = 0 Then    '2-rect
@@ -267,6 +335,11 @@ Module W8
 
             End If
 
+            If isRaw Then
+                Dim rawResult As Single = Math.Abs(haarFeatureValue - Classification)
+                Return rawResult
+            End If
+
             Dim result As Single = Weight * Math.Abs(haarFeatureValue - Classification)
             Return result
 
@@ -278,6 +351,24 @@ Module W8
 
         Public Feature As MyHaarLikeFeature = Nothing
         Public Weight As Single = 0.0F
+
+    End Class
+
+    Private Class MyStrongOutput
+
+        Public WeakInput As New List(Of MyWeakOutput)
+        Public WeightSum As Single = 0.0F
+
+        Public Sub SetWeight()
+            For Each weak As MyWeakOutput In WeakInput
+                WeightSum += weak.Weight
+            Next
+
+        End Sub
+
+        Public Function Classify(input As MyImageSample) As Integer
+
+        End Function
 
     End Class
 

@@ -404,15 +404,15 @@ lbl_nextdot:
     ''' </summary>
     Public Sub S_L1()
 
-        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "tri.png"
+        Dim path As String = AppDomain.CurrentDomain.BaseDirectory & "testimg1124.png"
 
         Dim image As Mat = Imread(path, ImreadModes.Grayscale)
         Dim ori_image As Mat = Imread(path, ImreadModes.Color)
         Dim resultM As Mat = GetEdgeMagnitude(image)
 
-        Dim hough As New Mat(New Size(360, 300), DepthType.Cv32F, 1)
-        For j = 0 To 299
-            For i = 0 To 359
+        Dim hough As New Mat(New Size(300, 360), DepthType.Cv32F, 1)
+        For i = 0 To 299
+            For j = 0 To 359
                 Mat_SetPixel_4(hough, j, i, BitConverter.GetBytes(0.0F))
             Next
         Next
@@ -426,21 +426,24 @@ lbl_nextdot:
                 If dot > 0.5F Then
                     For m = 0 To 359
 
-                        Dim alpha As Single = Math.Atan2(j, i)
-                        Dim theta As Single = m * Math.PI / (2 * 180.0F)
-                        Dim beta As Single = 0.5 * Math.PI - theta - alpha
-                        If m > 90 Then
-                            beta = -beta
-                        End If
+                        'Dim alpha As Single = Math.Atan2(j, i)
+                        'Dim theta As Single = m * Math.PI / (2 * 180.0F)
+                        'Dim beta As Single = 0.5 * Math.PI - theta - alpha
+                        'If m > 90 Then
+                        '    beta = -beta
+                        'End If
 
-                        Dim d1 As Single = Math.Sqrt(i ^ 2 + j ^ 2)
-                        Dim distance As Single = d1 * Math.Cos(beta)
+                        'Dim d1 As Single = Math.Sqrt(i ^ 2 + j ^ 2)
+                        'Dim distance As Single = d1 * Math.Cos(beta)
+                        Dim theta = m * Math.PI / 180
+                        Dim distance As Single = i * Math.Sin(theta) + j * Math.Cos(theta)
 
-                        Dim dis_y As Integer = distance / 2.5
+                        'Dim dis_y As Integer = distance / 2.5
 
-                        Dim lastValue As Single = BitConverter.ToSingle(hough.GetRawData(dis_y, m), 0)
+                        'Dim lastValue As Single = BitConverter.ToSingle(hough.GetRawData(dis_y, m), 0)
+                        Dim lastValue As Single = BitConverter.ToSingle(hough.GetRawData(m, distance), 0)
                         Dim thisValue As Single = lastValue + 1.0F
-                        Mat_SetPixel_4(hough, dis_y, m, BitConverter.GetBytes(thisValue))
+                        Mat_SetPixel_4(hough, m, distance, BitConverter.GetBytes(thisValue))
                     Next
                 End If
             Next
@@ -453,12 +456,21 @@ lbl_nextdot:
             For i = 1 To hough.Cols - 2
                 Dim dot As Single = BitConverter.ToSingle(hough.GetRawData(j, i), 0)
                 If dot > 0.5F Then
-                    Dim dis As Single = j * 2.5
-                    Dim theta As Single = i * Math.PI / (2 * 180.0F)
-                    Dim p1 As New Point(0, dis / Math.Cos(theta))
-                    Dim p2 As New Point(image.Cols - 1, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)))
+                    Dim dis As Single = i
+                    Dim theta As Single = j * Math.PI / (180.0F)
 
-                    Line(ori_image, p1, p2, New MCvScalar(0, 0, 255))
+                    If j = 90 Then
+                        Dim p1s As New Point(dis, 0)
+                        Dim p2s As New Point(dis, image.Rows - 1)
+                        Line(ori_image, p1s, p2s, New MCvScalar(0, 0, 255))
+                    Else
+                        Dim p1 As New Point(0, dis / Math.Cos(theta))
+                        Dim p2 As New Point(image.Cols - 1, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)))
+
+                        Line(ori_image, p1, p2, New MCvScalar(0, 0, 255))
+                    End If
+
+
                 End If
             Next
         Next
