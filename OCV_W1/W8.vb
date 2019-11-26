@@ -117,8 +117,16 @@ Module W8
 
     Private Sub S_LoadTrain()
 
-        For i = 1 To 5
-            Dim tmpimg As Mat = Imread("C:\Users\sscs\Desktop\mah\train\train0" & CStr(i) & ".png", ImreadModes.Grayscale)
+        Dim imageCount As Integer = 14
+
+        For i = 1 To 6
+            Dim path As String = ""
+            If i < 10 Then
+                path = "C:\Users\sscs\Desktop\mah\train\train0" & CStr(i) & ".png"
+            Else
+                path = "C:\Users\sscs\Desktop\mah\train\train" & CStr(i) & ".png"
+            End If
+            Dim tmpimg As Mat = Imread(path, ImreadModes.Grayscale)
             Dim integ As New Mat(24, 11, DepthType.Cv32S, 1)
             Integral(tmpimg, integ)
             'Train.Add(integ)
@@ -126,13 +134,19 @@ Module W8
             With sample
                 .IntegralImage = integ
                 .Classification = 1.0F
-                .Weight = 1 / 13
+                .Weight = 1 / imageCount
             End With
             SampleList.Add(sample)
             tmpimg.Dispose()
         Next
         For i = 1 To 8
-            Dim tmpimg As Mat = Imread("C:\Users\sscs\Desktop\mah\train\negative0" & CStr(i) & ".png", ImreadModes.Grayscale)
+            Dim path As String = ""
+            If i < 10 Then
+                path = "C:\Users\sscs\Desktop\mah\train\negative0" & CStr(i) & ".png"
+            Else
+                path = "C:\Users\sscs\Desktop\mah\train\negative" & CStr(i) & ".png"
+            End If
+            Dim tmpimg As Mat = Imread(path, ImreadModes.Grayscale)
             Dim integ As New Mat(24, 11, DepthType.Cv32S, 1)
             Integral(tmpimg, integ)
             'Negative.Add(integ)
@@ -140,7 +154,7 @@ Module W8
             With sample
                 .IntegralImage = integ
                 .Classification = 0.0F
-                .Weight = 1 / 13
+                .Weight = 1 / imageCount
             End With
             SampleList.Add(sample)
             tmpimg.Dispose()
@@ -239,7 +253,7 @@ Module W8
 
         Next
 
-        For Each j As Integer In {2, 5, 10, 12, 13, 15, 18, 20, 22, 25}
+        For Each j As Integer In {2, 5, 10, 12, 15, 18, 20, 22, 25}
             CascadeOutput.Add(StrongClassifierOutput(j - 2))
         Next
 
@@ -253,11 +267,11 @@ Module W8
         Integral(target, integ)
 
         'Sliding windows
-        For zoomHeight As Integer = 24 To target.Rows - 1
+        For zoomHeight As Integer = 24 To CInt(target.Rows / 1.5 - 1)
             Dim zoomWidth As Integer = zoomHeight * 11 / 24
             For j = 0 To target.Rows - 1 - zoomHeight
                 For i = 0 To target.Cols - 1 - zoomWidth
-                    Dim detect As New MyDetectWindow(i, j, zoomWidth, zoomHeight, zoomHeight / 24.0F)
+                    Dim detect As New MyDetectWindow(i, j, zoomWidth, zoomHeight)
                     Dim result As Integer = 1
                     For k = 0 To CascadeOutput.Count - 1
                         detect.LoadStrong(CascadeOutput(k))
@@ -281,7 +295,7 @@ Module W8
 
     Public Sub S_ShowHaar()
         Dim sample As Mat = Imread("C:\Users\sscs\Desktop\mah\train\train01.png", ImreadModes.Color)
-        For i = 0 To 9
+        For i = 0 To 24
             Dim f As MyHaarLikeFeature = WeakClassifierOutput(i).Feature
             CvInvoke.Rectangle(sample, f.GetRect1, New MCvScalar(255, 0, 0))
             CvInvoke.Rectangle(sample, f.GetRect2, New MCvScalar(255, 0, 0), -1)
@@ -427,7 +441,7 @@ Module W8
                 If haar.Rect2.X1 >= 0 Then blackArea -= BitConverter.ToInt32(IntegralImage.GetRawData(haar.Rect2.Y2, haar.Rect2.X1), 0)
                 If haar.Rect2.Y1 >= 0 Then blackArea -= BitConverter.ToInt32(IntegralImage.GetRawData(haar.Rect2.Y1, haar.Rect2.X2), 0)
                 If haar.Rect2.Y1 >= 0 AndAlso haar.Rect2.X1 >= 0 Then blackArea += BitConverter.ToInt32(IntegralImage.GetRawData(haar.Rect2.Y1, haar.Rect2.X1), 0)
-                haarFeatureValue = (whiteArea - blackArea) / (255 * haar.RectPixelCount)
+                haarFeatureValue = (whiteArea - blackArea) / (255.0F * haar.RectPixelCount)
 
             End If
 
@@ -490,16 +504,19 @@ Module W8
         Public Y As Integer
         Public Width As Integer
         Public Height As Integer
-        Public ZoomRatio As Single
+
+        Public ZoomRatioX As Single
+        Public ZoomRatioY As Single
 
         Private CurrentStrong As MyStrongOutput = Nothing
 
-        Public Sub New(inputX As Integer, inputY As Integer, inputW As Integer, inputH As Integer, inputZoom As Single)
+        Public Sub New(inputX As Integer, inputY As Integer, inputW As Integer, inputH As Integer)
             X = inputX
             Y = inputY
             Width = inputW
             Height = inputH
-            ZoomRatio = inputZoom
+            ZoomRatioX = Width / 11.0F
+            ZoomRatioY = Height / 24.0F
         End Sub
 
         Public Sub LoadStrong(input As MyStrongOutput)
@@ -507,10 +524,10 @@ Module W8
             For Each weak As MyWeakOutput In input.WeakInput
                 Dim weakCopy As New MyWeakOutput
                 weakCopy.Feature = weak.Feature.Copy
-                weakCopy.Feature.X = X + weakCopy.Feature.X * ZoomRatio
-                weakCopy.Feature.Y = Y + weakCopy.Feature.Y * ZoomRatio
-                weakCopy.Feature.Width *= ZoomRatio
-                weakCopy.Feature.Height *= ZoomRatio
+                weakCopy.Feature.X = X + weakCopy.Feature.X * ZoomRatioX
+                weakCopy.Feature.Y = Y + weakCopy.Feature.Y * ZoomRatioY
+                weakCopy.Feature.Width *= ZoomRatioX
+                weakCopy.Feature.Height *= ZoomRatioY
                 weakCopy.Feature.SetRect()
                 weakCopy.Weight = weak.Weight
                 tmpStrong.WeakInput.Add(weakCopy)
