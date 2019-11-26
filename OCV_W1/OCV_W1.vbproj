@@ -109,6 +109,7 @@
     <Compile Include="W4.vb" />
     <Compile Include="W5.vb" />
     <Compile Include="W8.vb" />
+    <Compile Include="W9.vb" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="My Project\Resources.resx">

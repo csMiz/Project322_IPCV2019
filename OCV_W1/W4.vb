@@ -489,7 +489,7 @@ lbl_nextdot:
     ''' <summary>
     ''' 通过卷积提取边缘
     ''' </summary>
-    Private Function GetEdgeMagnitude(image As Mat) As Mat
+    Public Function GetEdgeMagnitude(image As Mat) As Mat
         Dim resultH As New Mat(image.Size, DepthType.Cv32F, 1)
         Dim resultV As New Mat(image.Size, DepthType.Cv32F, 1)
         Dim resultM As New Mat(image.Size, DepthType.Cv32F, 1)

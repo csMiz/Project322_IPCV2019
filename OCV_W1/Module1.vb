@@ -6,7 +6,7 @@ Imports Emgu.CV.Util
 Module Module1
 
     Sub Main()
-        W8.S_T1()
+        W9.S_L1T1()
 
 
 
