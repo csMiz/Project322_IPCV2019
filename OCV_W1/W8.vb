@@ -17,6 +17,10 @@ Module W8
     Private SampleList As New List(Of MyImageSample)
     Private WeakClassifierOutput As New List(Of MyWeakOutput)
     Private StrongClassifierOutput As New List(Of MyStrongOutput)
+    Private CascadeOutput As New List(Of MyStrongOutput)
+    Private DetectOutput As New List(Of Rectangle)
+
+    Private DetectTargetSource As Mat = Nothing
 
 
     ''' <summary>
@@ -28,10 +32,15 @@ Module W8
     Public Sub S_T1()
         S_Haar()
         S_LoadTrain()
-        S_AdaBoost()
+        For i = 0 To 24
+            S_AdaBoost()
+            'S_PrintSampleInfo()
+        Next
         S_AdaBoost_Strong()
+        'S_ShowHaar()
+        S_Cascade()
+        S_ShowResult()
 
-        S_PrintSampleInfo()
 
     End Sub
 
@@ -42,8 +51,8 @@ Module W8
         '2格，3格，4格
         '最小特征为4x4
 
-        For w = 4 To 10
-            For h = 4 To 23
+        For w = 2 To 10
+            For h = 2 To 23
                 For j = 0 To 23 - h
                     For i = 0 To 10 - w
                         '2-rect
@@ -108,7 +117,7 @@ Module W8
 
     Private Sub S_LoadTrain()
 
-        For i = 1 To 4
+        For i = 1 To 5
             Dim tmpimg As Mat = Imread("C:\Users\sscs\Desktop\mah\train\train0" & CStr(i) & ".png", ImreadModes.Grayscale)
             Dim integ As New Mat(24, 11, DepthType.Cv32S, 1)
             Integral(tmpimg, integ)
@@ -117,12 +126,12 @@ Module W8
             With sample
                 .IntegralImage = integ
                 .Classification = 1.0F
-                .Weight = 1 / 8
+                .Weight = 1 / 13
             End With
             SampleList.Add(sample)
             tmpimg.Dispose()
         Next
-        For i = 1 To 4
+        For i = 1 To 8
             Dim tmpimg As Mat = Imread("C:\Users\sscs\Desktop\mah\train\negative0" & CStr(i) & ".png", ImreadModes.Grayscale)
             Dim integ As New Mat(24, 11, DepthType.Cv32S, 1)
             Integral(tmpimg, integ)
@@ -131,7 +140,7 @@ Module W8
             With sample
                 .IntegralImage = integ
                 .Classification = 0.0F
-                .Weight = 1 / 8
+                .Weight = 1 / 13
             End With
             SampleList.Add(sample)
             tmpimg.Dispose()
@@ -169,7 +178,7 @@ Module W8
                 Exit For
             End If
         Next
-        If minER <= 0.5 Then Throw New Exception
+        If minER >= 0.5 Then Throw New Exception
 
         Dim result As New MyWeakOutput
         result.Feature = HaarFeatureList(minIndex)
@@ -177,9 +186,11 @@ Module W8
         result.Weight = Math.Log10(1 / betaT)
         WeakClassifierOutput.Add(result)
 
+        HaarFeatureList.RemoveAt(minIndex)
+
         'step 3: update weight
         For Each sample As MyImageSample In SampleList
-            Dim fValue As Single = sample.CalculateE(result.Feature, True)
+            Dim fValue As Single = sample.CalculateE(result.Feature, 1)
             If fValue < 0.5 Then
                 sample.Weight = sample.Weight * betaT
             End If
@@ -191,20 +202,13 @@ Module W8
     Public Sub S_AdaBoost_Strong()
 
         'step 4: strong classifier
-        Dim strong1 As New MyStrongOutput
-        For i = 0 To 1
-            strong1.WeakInput.Add(WeakClassifierOutput(i))
-        Next
-        strong1.SetWeight()
 
-        StrongClassifierOutput.Add(strong1)
-
-        For j = 3 To 25
+        For j = 2 To 25
             Dim tmpStrong As New MyStrongOutput
             For i = 0 To j - 1
                 tmpStrong.WeakInput.Add(WeakClassifierOutput(i))
             Next
-
+            tmpStrong.SetWeight()
 
             Dim tp As Integer = 0
             Dim fp As Integer = 0
@@ -225,12 +229,72 @@ Module W8
             Next
 
             'false positive rate = fp / (fp+tn)
-            Dim fpr As Single = fp / (fp + tn)
+            Dim fpr As Single = fp * 1.0F / (fp + tn)
             'recall = tp / (tp+fn)
-            Dim recall As Single = tp / (tp + fn)
+            Dim recall As Single = tp * 1.0F / (tp + fn)
+
+            StrongClassifierOutput.Add(tmpStrong)
+
+            Debug.Print("strong" & CStr(j) & ":recall=" & recall & " fpr=" & fpr)
 
         Next
 
+        For Each j As Integer In {2, 5, 10, 12, 13, 15, 18, 20, 22, 25}
+            CascadeOutput.Add(StrongClassifierOutput(j - 2))
+        Next
+
+
+    End Sub
+
+    Public Sub S_Cascade()
+
+        Dim target As Mat = Imread("C:\Users\sscs\Desktop\mah\img4.png", ImreadModes.Grayscale)
+        Dim integ As New Mat(target.Size, DepthType.Cv32S, 1)
+        Integral(target, integ)
+
+        'Sliding windows
+        For zoomHeight As Integer = 24 To target.Rows - 1
+            Dim zoomWidth As Integer = zoomHeight * 11 / 24
+            For j = 0 To target.Rows - 1 - zoomHeight
+                For i = 0 To target.Cols - 1 - zoomWidth
+                    Dim detect As New MyDetectWindow(i, j, zoomWidth, zoomHeight, zoomHeight / 24.0F)
+                    Dim result As Integer = 1
+                    For k = 0 To CascadeOutput.Count - 1
+                        detect.LoadStrong(CascadeOutput(k))
+                        Dim classification As Integer = detect.Apply(integ)
+                        If classification = 0 Then
+                            result = 0
+                            Exit For    'no object
+                        End If
+                    Next
+                    If result = 1 Then    'have object
+                        DetectOutput.Add(detect.GetRect)
+                    End If
+                Next
+            Next
+        Next
+
+        target.Dispose()
+        integ.Dispose()
+
+    End Sub
+
+    Public Sub S_ShowHaar()
+        Dim sample As Mat = Imread("C:\Users\sscs\Desktop\mah\train\train01.png", ImreadModes.Color)
+        For i = 0 To 9
+            Dim f As MyHaarLikeFeature = WeakClassifierOutput(i).Feature
+            CvInvoke.Rectangle(sample, f.GetRect1, New MCvScalar(255, 0, 0))
+            CvInvoke.Rectangle(sample, f.GetRect2, New MCvScalar(255, 0, 0), -1)
+
+            Debug.WriteLine("Feature" & CStr(i) & ":" & f.X & "," & f.Y & "," & f.Width & "," & f.Height & "," & f.Direction)
+        Next
+
+        Resize(sample, sample, New Size(110, 240))
+
+        Imshow("haar", sample)
+        WaitKey(0)
+
+        sample.Dispose()
 
     End Sub
 
@@ -240,6 +304,19 @@ Module W8
             Debug.WriteLine(CStr(i) & ": Class=" & CInt(sample.Classification) & " Weight=" & sample.Weight)
 
         Next
+
+    End Sub
+
+    Public Sub S_ShowResult()
+        DetectTargetSource = Imread("C:\Users\sscs\Desktop\mah\img4.png", ImreadModes.Color)
+
+        For Each resultRect As Rectangle In DetectOutput
+            Emgu.CV.CvInvoke.Rectangle(DetectTargetSource, resultRect, New MCvScalar(0, 0, 255))
+        Next
+
+        Imshow("result", DetectTargetSource)
+        WaitKey(0)
+
 
     End Sub
 
@@ -257,11 +334,11 @@ Module W8
 
         Public Rect1 As MyRect
         Public Rect2 As MyRect
-        Public RectPixelCount As Integer = 0
+        Public RectPixelCount As Single = 0
 
         Public Sub SetRect()
             If HaarType = 0 Then    '2-rect
-                RectPixelCount = Width * Height / 2
+                RectPixelCount = Width * Height / 2.0F
                 If Direction = 0 Then    '左白又黑
                     Dim midX As Integer = Width / 2 + X - 1
                     Dim bottomY As Integer = Y + Height - 1
@@ -307,7 +384,26 @@ Module W8
 
         End Sub
 
+        Public Function Copy() As MyHaarLikeFeature
+            Dim result As New MyHaarLikeFeature
+            With result
+                .X = X
+                .Y = Y
+                .Width = Width
+                .Height = Height
+                .HaarType = HaarType
+                .Direction = Direction
+            End With
+            Return result
+        End Function
 
+        Public Function GetRect1() As Rectangle
+            Return New Rectangle(Rect1.X1, Rect1.Y1, Rect1.X2 - Rect1.X1, Rect1.Y2 - Rect1.Y1)
+        End Function
+
+        Public Function GetRect2() As Rectangle
+            Return New Rectangle(Rect2.X1, Rect2.Y1, Rect2.X2 - Rect2.X1, Rect2.Y2 - Rect2.Y1)
+        End Function
 
     End Class
 
@@ -317,7 +413,7 @@ Module W8
         Public Classification As Single = 0.0F
         Public Weight As Single = 0.0F
 
-        Public Function CalculateE(haar As MyHaarLikeFeature, Optional isRaw As Boolean = False) As Single
+        Public Function CalculateE(haar As MyHaarLikeFeature, Optional isRaw As Integer = 0) As Single
 
             Dim haarFeatureValue As Single = 0.0F
             If haar.HaarType = 0 Then    '2-rect
@@ -335,8 +431,11 @@ Module W8
 
             End If
 
-            If isRaw Then
+            If isRaw = 1 Then
                 Dim rawResult As Single = Math.Abs(haarFeatureValue - Classification)
+                Return rawResult
+            ElseIf isRaw = 2 Then
+                Dim rawResult As Single = haarFeatureValue
                 Return rawResult
             End If
 
@@ -367,7 +466,66 @@ Module W8
         End Sub
 
         Public Function Classify(input As MyImageSample) As Integer
+            Dim result As Single = 0.0F
+            For Each weak As MyWeakOutput In WeakInput
+                Dim value As Single = input.CalculateE(weak.Feature, 2)
+                result += (value * weak.Weight)
+            Next
+            If result >= 0.5 * WeightSum Then
+                Return 1
+            End If
+            Return 0
+        End Function
 
+        Public Function Classify(input As Mat) As Integer
+            Dim sample As New MyImageSample With {
+                .IntegralImage = input}
+            Return Classify(sample)
+        End Function
+
+    End Class
+
+    Private Class MyDetectWindow
+        Public X As Integer
+        Public Y As Integer
+        Public Width As Integer
+        Public Height As Integer
+        Public ZoomRatio As Single
+
+        Private CurrentStrong As MyStrongOutput = Nothing
+
+        Public Sub New(inputX As Integer, inputY As Integer, inputW As Integer, inputH As Integer, inputZoom As Single)
+            X = inputX
+            Y = inputY
+            Width = inputW
+            Height = inputH
+            ZoomRatio = inputZoom
+        End Sub
+
+        Public Sub LoadStrong(input As MyStrongOutput)
+            Dim tmpStrong As New MyStrongOutput
+            For Each weak As MyWeakOutput In input.WeakInput
+                Dim weakCopy As New MyWeakOutput
+                weakCopy.Feature = weak.Feature.Copy
+                weakCopy.Feature.X = X + weakCopy.Feature.X * ZoomRatio
+                weakCopy.Feature.Y = Y + weakCopy.Feature.Y * ZoomRatio
+                weakCopy.Feature.Width *= ZoomRatio
+                weakCopy.Feature.Height *= ZoomRatio
+                weakCopy.Feature.SetRect()
+                weakCopy.Weight = weak.Weight
+                tmpStrong.WeakInput.Add(weakCopy)
+            Next
+            tmpStrong.WeightSum = input.WeightSum
+
+            CurrentStrong = tmpStrong
+        End Sub
+
+        Public Function Apply(integ As Mat) As Integer
+            Return CurrentStrong.Classify(integ)
+        End Function
+
+        Public Function GetRect() As Rectangle
+            Return New Rectangle(X, Y, Width, Height)
         End Function
 
     End Class
