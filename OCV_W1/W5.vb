@@ -101,6 +101,38 @@ Module W5
     ''' </summary>
     Public Sub S_L2T1()
 
+        Dim rand As New Random
+
+        Dim path As String = "C:\Users\sscs\Desktop\Study\CV\imgs\jeep2.jpg"
+        Dim image As Mat = Imread(path, ImreadModes.Grayscale)
+
+        Dim cImage As Mat = Imread(path, ImreadModes.Color)
+
+        Dim bin As New Mat
+        AdaptiveThreshold(image, bin, 255, AdaptiveThresholdType.GaussianC, ThresholdType.BinaryInv, 5, 10)
+
+        Dim markers As Mat = Mat.Zeros(image.Height, image.Width, DepthType.Cv8U, 1)
+        Dim contours As New VectorOfVectorOfPoint
+        Dim hi As Emgu.CV.IOutputArray = New Image(Of Gray, Byte)(image.Width, image.Height, New Gray(255))
+        FindContours(bin, contours, hi, RetrType.List, ChainApproxMethod.ChainApproxNone)
+
+
+        For i = 0 To contours.Size - 1
+            Dim colour As New MCvScalar(rand.NextDouble * 255, rand.NextDouble * 255, rand.NextDouble * 255)
+            DrawContours(markers, contours, i, colour, -1, 8, hi)
+        Next
+
+        Dim marker2 As New Mat
+        markers.ConvertTo(marker2, DepthType.Cv32S)
+
+        Watershed(cImage, marker2)
+
+        Dim marker3 As New Mat
+        marker2.ConvertTo(marker3, DepthType.Cv8U)
+        Imshow("result", marker3)
+        WaitKey(0)
+
+
     End Sub
 
     ''' <summary>
