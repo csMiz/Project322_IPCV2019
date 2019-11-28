@@ -103,7 +103,7 @@ Module W5
 
         Dim rand As New Random
 
-        Dim path As String = "C:\Users\sscs\Desktop\Study\CV\imgs\jeep2.jpg"
+        Dim path As String = "C:\Users\asdfg\Desktop\cvimgstest\jeep.jpg"
         Dim image As Mat = Imread(path, ImreadModes.Grayscale)
 
         Dim cImage As Mat = Imread(path, ImreadModes.Color)
