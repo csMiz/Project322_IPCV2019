@@ -6,7 +6,8 @@ Imports Emgu.CV.Util
 Module Module1
 
     Sub Main()
-        W9.S_L1T1()
+        W9.S_L1T4()
+        'W9.S_ImageSeg()
 
 
 
