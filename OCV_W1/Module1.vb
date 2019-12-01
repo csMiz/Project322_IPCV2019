@@ -9,8 +9,7 @@ Module Module1
         W9.S_L1T4()
         'W9.S_ImageSeg()
 
-
-
+        Console.ReadLine()
     End Sub
 
 

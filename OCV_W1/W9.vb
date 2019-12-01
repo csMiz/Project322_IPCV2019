@@ -286,10 +286,10 @@ Module W9
     ''' <summary>
     ''' 对直线和圆的霍夫变换综合分析
     ''' </summary>
-    Public Sub S_L1T4()
+    Public Async Sub S_L1T4()
 
-        'Dim path As String = "C:\Users\sscs\Desktop\materials\dart1.jpg"
-        Dim path As String = "C:\Users\asdfg\Desktop\ocvjtest\materials\dart10.jpg"
+        Dim path As String = "C:\Users\sscs\Desktop\materials\dart3.jpg"
+        'Dim path As String = "C:\Users\asdfg\Desktop\ocvjtest\materials\dart10.jpg"
 
         Dim image As Mat = Imread(path, ImreadModes.Color)
         Dim grayImg As Mat = Imread(path, ImreadModes.Grayscale)
@@ -297,21 +297,138 @@ Module W9
         'Dim sample As MyHoughSample2 = S_LoadSample2()
         Dim detectResult As New List(Of Single())
 
-        '用sliding window检测
-        For windowSize As Integer = 200 To 200 '100 To 300 Step 50
-            For windowX As Integer = 800 To 800 '0 To grayImg.Cols - windowSize - 1 Step 25
-                For windowY As Integer = 50 To 50 '0 To grayImg.Rows - windowSize - 1 Step 25
-                    Dim tmpWindow As Mat = GetSlidingWindow(grayImg, windowX, windowY, windowSize)
-                    Dim tmpMag As Mat = W4.GetEdgeMagnitude(tmpWindow)
-                    Threshold(tmpMag, tmpMag, 0.5, 1.0, ThresholdType.Binary)
-                    Imshow("win", tmpMag)
-                    WaitKey(0)
+        Dim threadCount As Integer = 0
 
-                    tmpWindow.Dispose()
+        '用sliding window检测
+        For windowSize_i As Integer = 100 To 100 Step -50
+            For windowX_i As Integer = 300 To grayImg.Cols - windowSize_i - 1 Step 25
+                For windowY_i As Integer = 0 To grayImg.Rows - windowSize_i - 1 Step 25
+
+                    Dim windowSize As Integer = windowSize_i
+                    Dim windowX As Integer = windowX_i
+                    Dim windowY As Integer = windowY_i
+
+                    Dim process = Sub()
+                                      If detectResult.Count >= 3 Then
+                                          threadCount -= 1
+                                          Return
+                                      End If
+
+                                      Debug.WriteLine("scan:" & windowSize & " at " & windowX & ", " & windowY)
+                                      Dim tmpWindow As Mat = GetSlidingWindow(grayImg, windowX, windowY, windowSize)
+                                      'Dim tmpMag As Mat = W4.GetEdgeMagnitude(tmpWindow)
+                                      'Threshold(tmpMag, tmpMag, 0.5, 1.0, ThresholdType.Binary)
+                                      Dim tmpMag0 As Mat = W9.GetEdgeMagnitudeCanny(tmpWindow)
+                                      Dim tmpMag As New Mat
+                                      tmpMag0.ConvertTo(tmpMag, DepthType.Cv32F, 1 / 255, 0)
+
+                                      'Imshow("winmag", tmpMag)
+                                      'WaitKey(0)
+
+                                      Dim haveDart As Boolean = False
+                                      '1.正圆
+                                      '1.1.椭圆
+                                      Dim rawEllipse As List(Of Single()) = MyHoughEllipse(tmpMag)
+                                      Dim ellMark As New List(Of Single)
+                                      For Each tmpEll As Single() In rawEllipse
+                                          Dim big_r As Single = tmpEll(2)
+                                          Dim small_r As Single = tmpEll(3)
+                                          If big_r < small_r Then
+                                              Dim tmp As Single = big_r
+                                              big_r = small_r
+                                              small_r = tmp
+                                          End If
+                                          Dim tmpMark As Single = (big_r - small_r) + 100 / (big_r * small_r)
+                                          ellMark.Add(tmpMark)
+                                          Debug.WriteLine("Ellipse: " & (tmpEll(0) + windowX) & "," & (tmpEll(1) + windowY) & "," & tmpEll(2) & "," & tmpEll(3) & " mark=" & tmpMark)
+                                      Next
+                                      If rawEllipse.Count > 0 Then
+                                          Dim minMark As Single = ellMark.Min
+                                          Dim ellIndex As Integer = 0
+                                          For i = 0 To ellMark.Count - 1
+                                              If ellMark(i) = minMark Then
+                                                  ellIndex = i
+                                                  Exit For
+                                              End If
+                                          Next
+                                          Dim tmpEll As Single() = rawEllipse(ellIndex)
+                                          '2.同心圆
+                                          Dim concentric As Single = ParseFeature_ConcentricEllipse(tmpMag, rawEllipse(0))
+                                          If concentric > 0 Then
+                                              Debug.WriteLine("concentric: " & concentric)
+                                              'CvInvoke.Rectangle(image, New Drawing.Rectangle(windowX + tmpEll(0) - tmpEll(2) * concentric, windowY + tmpEll(1) - tmpEll(3) * concentric, tmpEll(2) * 2 * concentric, tmpEll(3) * 2 * concentric), New MCvScalar(0, 255, 0))
+                                              '3.直线
+                                              Dim rawLine As List(Of Single()) = MyHoughLine(tmpMag)
+                                              Dim filterLine As List(Of Single()) = LineFilter(rawLine)
+                                              For Each tmpLine As Single() In filterLine
+                                                  Dim dis As Single = tmpLine(0)
+                                                  Dim theta As Single = tmpLine(1) * Math.PI / (180.0F)
+
+                                                  'If tmpLine(1) = 90 OrElse tmpLine(1) = 270 Then
+                                                  '    Dim p1s As New Point(Math.Abs(dis) + windowX, 0 + windowY)
+                                                  '    Dim p2s As New Point(Math.Abs(dis) + windowX, image.Rows - 1 + windowY)
+                                                  '    Line(image, p1s, p2s, New MCvScalar(0, 0, 255))
+                                                  'Else
+                                                  '    Dim p1 As New Point(0 + windowX, dis / Math.Cos(theta) + windowY)
+                                                  '    Dim p2 As New Point(image.Cols - 1 + windowX, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)) + windowY)
+                                                  '    Line(image, p1, p2, New MCvScalar(0, 0, 255))
+                                                  'End If
+                                              Next
+                                              Dim ifIntersect As Boolean = ParseFeature_MultiLineIntersect_Verify(tmpEll(0), tmpEll(1), filterLine)
+                                              If ifIntersect Then
+                                                  Dim trueX As Single = windowX + tmpEll(0)
+                                                  Dim trueY As Single = windowY + tmpEll(1)
+                                                  Dim same As Boolean = False
+                                                  For Each result As Single() In detectResult
+                                                      Dim distance As Single = Math.Sqrt((result(0) - trueX) ^ 2 + (result(1) - trueY) ^ 2)
+                                                      If distance < 30 Then
+                                                          same = True
+                                                      End If
+                                                  Next
+                                                  If Not same Then
+                                                      haveDart = True
+                                                      If detectResult.Count >= 3 Then
+                                                          threadCount -= 1
+                                                          Return
+                                                      End If
+                                                      detectResult.Add({trueX, trueY, tmpEll(2), tmpEll(3)})
+                                                      'CvInvoke.Rectangle(image, New Rectangle(windowX + tmpEll(0) - tmpEll(2),
+                                                      'windowY + tmpEll(1) - tmpEll(3), tmpEll(2) * 2, tmpEll(3) * 2), New MCvScalar(0, 255, 255))
+                                                  End If
+                                              End If
+                                          End If
+                                      End If
+
+                                      tmpWindow.Dispose()
+                                      threadCount -= 1
+                                  End Sub
+
+                    Dim tmpTask As New Task(process)
+                    Do While threadCount > 10
+                        Await Task.Delay(500)
+                    Loop
+                    threadCount += 1
+                    tmpTask.Start()
+
                 Next
             Next
         Next
 
+EndDetect:
+
+        Do While threadCount <> 0
+            Await Task.Delay(500)
+        Loop
+        For Each result As Single() In detectResult
+            Debug.WriteLine("result:" & result(0) & ", " & result(1))
+        Next
+
+
+        Imshow("win", image)
+        WaitKey(0)
+
+
+        Return
 
         '第一次检测
         '调整亮度
@@ -536,9 +653,9 @@ Module W9
     Public Function MyHoughEllipse(mag As Mat) As List(Of Single())
         Dim imageHeight As Integer = mag.Rows
         Dim imageWidth As Integer = mag.Cols
-        Dim houghSpaceR(imageWidth, imageHeight) As MyGeneralHoughResult    '存储缩放信息
+        Dim houghSpaceR(imageWidth, imageHeight, 4) As MyGeneralHoughResult    '存储缩放信息
 
-        For rh = 10 To imageHeight
+        For rh = 35 To imageHeight
             Dim lb As Integer = rh / 3.0
             Dim ub As Integer = rh * 1.1
             If ub > imageWidth Then ub = imageWidth
@@ -549,7 +666,7 @@ Module W9
                         Dim pixel As Single = BitConverter.ToSingle(mag.GetRawData(j, i), 0)
                         If pixel > 0.5F Then
                             '这种方法不太好，疏密不均匀
-                            For theta = 0 To 359 Step 2
+                            For theta = 0 To 359 Step 4
                                 Dim angle As Single = theta * Math.PI / 180
                                 Dim x0 As Integer = i + rw * Math.Cos(angle)
                                 Dim y0 As Integer = j + rh * Math.Sin(angle)
@@ -562,44 +679,74 @@ Module W9
                     Next
                 Next
 
-                Dim tmpMax As Single = 0.0F
-                Dim tmpMaxArgs(1) As Integer
-                For j = 0 To imageHeight - 1
-                    For i = 0 To imageWidth - 1
-                        Dim value As Single = tmpHoughSpace(i, j)
-                        If value > tmpMax Then
-                            tmpMax = value
-                            tmpMaxArgs(0) = i
-                            tmpMaxArgs(1) = j
-                        End If
+                For k = 0 To 4
+                    Dim tmpMax As Single = 0.0F
+                    Dim tmpMaxArgs(1) As Integer
+                    For j = 0 To imageHeight - 1
+                        For i = 0 To imageWidth - 1
+                            Dim value As Single = tmpHoughSpace(i, j)
+                            If value > tmpMax Then
+                                tmpMax = value
+                                tmpMaxArgs(0) = i
+                                tmpMaxArgs(1) = j
+                            End If
+                        Next
                     Next
+
+                    If tmpMax < 40 Then Exit For
+
+                    With houghSpaceR(rw, rh, k)
+                        .X = tmpMaxArgs(0)
+                        .Y = tmpMaxArgs(1)
+                        .Value = tmpMax
+                    End With
+
+                    tmpHoughSpace(tmpMaxArgs(0), tmpMaxArgs(1)) = 0.0F
                 Next
 
-                With houghSpaceR(rw, rh)
-                    .X = tmpMaxArgs(0)
-                    .Y = tmpMaxArgs(1)
-                    .Value = tmpMax
-                End With
-                'Debug.WriteLine("rw:" & rw & " rh:" & rh & " value:" & tmpMax)
             Next
-            Debug.WriteLine("rh:" & rh)
-        Next
-
-        Dim rMax As MyGeneralHoughResult
-        Dim rMaxScale(1) As Integer
-        For j = 0 To imageHeight - 1
-            For i = 0 To imageWidth - 1
-                Dim value As Single = houghSpaceR(i, j).Value
-                If value > rMax.Value Then
-                    rMax = houghSpaceR(i, j)
-                    rMaxScale(0) = i
-                    rMaxScale(1) = j
-                End If
-            Next
+            If rh Mod 5 = 0 Then Debug.WriteLine("rh:" & rh)
         Next
 
         Dim result As New List(Of Single())
-        result.Add({rMax.X, rMax.Y, rMaxScale(0), rMaxScale(1)})
+        Dim resultCount As Integer = 0
+        Do While resultCount < 5
+            Dim rMax As New MyGeneralHoughResult
+            Dim rMaxScale(2) As Integer
+            For k = 0 To 4
+                For j = 35 To imageHeight - 1
+                    For i = 11 To imageWidth - 1
+                        Dim value As Single = houghSpaceR(i, j, k).Value
+                        If value > rMax.Value Then
+                            rMax = houghSpaceR(i, j, k)
+                            rMaxScale(0) = i
+                            rMaxScale(1) = j
+                            rMaxScale(2) = k
+                        End If
+                    Next
+                Next
+            Next
+
+            houghSpaceR(rMaxScale(0), rMaxScale(1), rMaxScale(2)).Value = 0.0F
+
+            If rMax.Value >= 40 Then
+                Dim different As Boolean = True
+                For Each tmpEllipse As Single() In result
+                    Dim distance As Double = Math.Sqrt((rMax.X - tmpEllipse(0)) ^ 2 + (rMax.Y - tmpEllipse(1)) ^ 2)
+                    Dim r_dist As Double = Math.Sqrt((rMaxScale(0) - tmpEllipse(2)) ^ 2 + (rMaxScale(1) - tmpEllipse(3)) ^ 2)
+                    If distance <= 7 AndAlso r_dist <= 7 Then
+                        different = False
+                    End If
+                Next
+                If different Then
+                    result.Add({rMax.X, rMax.Y, rMaxScale(0), rMaxScale(1)})
+                    resultCount += 1
+                End If
+            Else
+                Exit Do
+            End If
+        Loop
+
         Return result
 
     End Function
@@ -762,6 +909,57 @@ Module W9
         Return {intersection(0), intersection(1)}
     End Function
 
+    Public Function ParseFeature_MultiLineIntersect_Verify(x As Single, y As Single, input As List(Of Single())) As Boolean
+        Dim cluster As New List(Of Single)
+        For Each line As Single() In input
+            Dim distance As Single = 0.0F
+            Dim theta As Single = -line(1) * Math.PI / 180.0F
+            Dim degree As Integer = line(1)
+            If degree = 90 OrElse degree = 270 Then
+                distance = x - line(0)
+            ElseIf degree = 0 OrElse degree = 180 OrElse degree = 360 Then
+                distance = y - line(0)
+            Else
+                'Dim k As Double = Math.Tan(theta)
+                'Dim b As Double = line(0) / Math.Cos(theta)
+                'Dim x1 As Double = (j - b) / k
+                'distance = (x1 - i) * Math.Sin(theta)
+                distance = y * Math.Cos(theta) - x * Math.Sin(theta) - line(0)
+            End If
+            distance = Math.Abs(distance)
+            If distance < 7 Then
+                cluster.Add(distance)
+            End If
+        Next
+        If cluster.Count >= 3 Then
+            Return True
+        End If
+        Return False
+    End Function
+
+    Public Function ParseFeature_ConcentricEllipse(mag As Mat, ellipse As Single()) As Single
+        For k = 75 To 25 Step -2
+            Dim ratio As Single = k / 100.0F
+            Dim rw As Single = ratio * ellipse(2)
+            Dim rh As Single = ratio * ellipse(3)
+            Dim vote As Single = 0.0F
+            For theta = 0 To 359
+                Dim angle As Single = theta * Math.PI / 180
+                Dim x0 As Integer = ellipse(0) + rw * Math.Cos(angle)
+                Dim y0 As Integer = ellipse(1) + rh * Math.Sin(angle)
+                Dim pixel As Single = BitConverter.ToSingle(mag.GetRawData(y0, x0), 0)
+                If pixel > 0.5F Then
+                    vote += 1.0F
+                End If
+            Next
+            vote /= 180.0F
+            If vote > 0.5F Then
+                Return ratio
+            End If
+        Next
+        Return -1.0F
+    End Function
+
     Public Function ImageSegmentation(image As Mat, sepWidthRatio As Single, sepHeightRatio As Single) As Mat()
         Dim divWidth As Integer = image.Cols * sepWidthRatio
         Dim divHeight As Integer = image.Rows * sepHeightRatio
@@ -813,7 +1011,7 @@ Module W9
         Dim avgBright As Single = 0.0F
         For i = 0 To size - 1
             For j = 0 To size - 1
-                avgBright = avgBright + CInt(image.GetRawData(j, i)(0))
+                avgBright += CInt(image.GetRawData(j, i)(0))
             Next
         Next
         avgBright /= (size * size)
@@ -979,7 +1177,7 @@ Module W9
     Public Function GetEdgeMagnitudeCanny(image As Mat) As Mat
         Dim result As New Mat
         Blur(image, image, New Size(4, 4), New Point(-1, -1))
-        Canny(image, result, 8, 16)
+        Canny(image, result, 4, 128)
         Return result
     End Function
 
