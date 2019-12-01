@@ -288,11 +288,19 @@ Module W9
     ''' </summary>
     Public Async Sub S_L1T4()
 
-        Dim path As String = "C:\Users\sscs\Desktop\materials\dart3.jpg"
-        'Dim path As String = "C:\Users\asdfg\Desktop\ocvjtest\materials\dart10.jpg"
+        'Dim path As String = "C:\Users\sscs\Desktop\materials\dart3.jpg"
+        Dim path As String = "C:\Users\asdfg\Desktop\ocvjtest\materials\dart10.jpg"
 
         Dim image As Mat = Imread(path, ImreadModes.Color)
         Dim grayImg As Mat = Imread(path, ImreadModes.Grayscale)
+
+        Dim winTest As Mat = GetSlidingWindow(grayImg, 850, 100, 150)
+        Dim cannyTest As Mat = W9.GetEdgeMagnitudeCanny(winTest)
+        'Threshold(sobelTest, sobelTest, 0.5, 1.0, ThresholdType.Binary)
+        Dim tmpMag2 As New Mat
+        cannyTest.ConvertTo(tmpMag2, DepthType.Cv32F, 1.0 / 255, 0)
+        Imshow("st", tmpMag2)
+        WaitKey(0)
 
         'Dim sample As MyHoughSample2 = S_LoadSample2()
         Dim detectResult As New List(Of Single())
@@ -300,9 +308,9 @@ Module W9
         Dim threadCount As Integer = 0
 
         '用sliding window检测
-        For windowSize_i As Integer = 100 To 100 Step -50
-            For windowX_i As Integer = 300 To grayImg.Cols - windowSize_i - 1 Step 25
-                For windowY_i As Integer = 0 To grayImg.Rows - windowSize_i - 1 Step 25
+        For windowSize_i As Integer = 150 To 150 Step -50
+            For windowX_i As Integer = 849 To grayImg.Cols - windowSize_i - 1 Step 25
+                For windowY_i As Integer = 100 To grayImg.Rows - windowSize_i - 1 Step 25
 
                     Dim windowSize As Integer = windowSize_i
                     Dim windowX As Integer = windowX_i
@@ -316,19 +324,31 @@ Module W9
 
                                       Debug.WriteLine("scan:" & windowSize & " at " & windowX & ", " & windowY)
                                       Dim tmpWindow As Mat = GetSlidingWindow(grayImg, windowX, windowY, windowSize)
+                                      'Blur(tmpWindow, tmpWindow, New Size(3, 3), New Point(-1, -1))
                                       'Dim tmpMag As Mat = W4.GetEdgeMagnitude(tmpWindow)
                                       'Threshold(tmpMag, tmpMag, 0.5, 1.0, ThresholdType.Binary)
                                       Dim tmpMag0 As Mat = W9.GetEdgeMagnitudeCanny(tmpWindow)
                                       Dim tmpMag As New Mat
-                                      tmpMag0.ConvertTo(tmpMag, DepthType.Cv32F, 1 / 255, 0)
+                                      tmpMag0.ConvertTo(tmpMag, DepthType.Cv32F, 1.0 / 255, 0)
 
                                       'Imshow("winmag", tmpMag)
                                       'WaitKey(0)
 
                                       Dim haveDart As Boolean = False
                                       '1.正圆
+                                      Dim rawCircle As List(Of Single()) = MyHoughCircle(tmpMag)
+                                      Dim filterCircle As List(Of Single()) = CircleFilter(rawCircle)
                                       '1.1.椭圆
-                                      Dim rawEllipse As List(Of Single()) = MyHoughEllipse(tmpMag)
+                                      Dim rawEllipse As New List(Of Single())
+                                      If filterCircle.Count > 0 Then
+                                          For Each circle As Single() In filterCircle
+                                              rawEllipse.Add({circle(0), circle(1), circle(2), circle(3)})
+                                              Debug.WriteLine("Circle:" & (circle(0) + windowX) & ", " & (circle(1) + windowY) & ", " & circle(2))
+                                          Next
+                                      Else
+                                          rawEllipse = MyHoughEllipse(tmpMag)
+                                          Debug.WriteLine("ell Count:" & rawEllipse.Count)
+                                      End If
                                       Dim ellMark As New List(Of Single)
                                       For Each tmpEll As Single() In rawEllipse
                                           Dim big_r As Single = tmpEll(2)
@@ -338,15 +358,15 @@ Module W9
                                               big_r = small_r
                                               small_r = tmp
                                           End If
-                                          Dim tmpMark As Single = (big_r - small_r) + 100 / (big_r * small_r)
+                                          Dim tmpMark As Single = (big_r - small_r) + 100000 / (big_r * small_r)
                                           ellMark.Add(tmpMark)
                                           Debug.WriteLine("Ellipse: " & (tmpEll(0) + windowX) & "," & (tmpEll(1) + windowY) & "," & tmpEll(2) & "," & tmpEll(3) & " mark=" & tmpMark)
                                       Next
                                       If rawEllipse.Count > 0 Then
-                                          Dim minMark As Single = ellMark.Min
+                                          Dim minEll As Single = ellMark.Min
                                           Dim ellIndex As Integer = 0
                                           For i = 0 To ellMark.Count - 1
-                                              If ellMark(i) = minMark Then
+                                              If ellMark(i) = minEll Then
                                                   ellIndex = i
                                                   Exit For
                                               End If
@@ -392,8 +412,15 @@ Module W9
                                                           Return
                                                       End If
                                                       detectResult.Add({trueX, trueY, tmpEll(2), tmpEll(3)})
+                                                      Debug.WriteLine("result found: " & trueX & ", " & trueY & ", " & tmpEll(2) & ", " & tmpEll(3))
                                                       'CvInvoke.Rectangle(image, New Rectangle(windowX + tmpEll(0) - tmpEll(2),
                                                       'windowY + tmpEll(1) - tmpEll(3), tmpEll(2) * 2, tmpEll(3) * 2), New MCvScalar(0, 255, 255))
+
+                                                      Dim cimg As Mat = Imread(path, ImreadModes.Color)
+                                                      CvInvoke.Rectangle(cimg, New Drawing.Rectangle(trueX - tmpEll(2), trueY - tmpEll(3),
+                                                        tmpEll(2) * 2, tmpEll(3) * 2), New MCvScalar(0, 0, 255))
+                                                      Imwrite("C:\Users\asdfg\Desktop\ocvjtest\materials\result.png", cimg)
+                                                      cimg.Dispose()
                                                   End If
                                               End If
                                           End If
@@ -403,12 +430,14 @@ Module W9
                                       threadCount -= 1
                                   End Sub
 
-                    Dim tmpTask As New Task(process)
-                    Do While threadCount > 10
-                        Await Task.Delay(500)
-                    Loop
+                    'Dim tmpTask As New Task(process)
+                    'Do While threadCount > 3
+                    '    Await Task.Delay(500)
+                    'Loop
+                    'threadCount += 1
+                    'tmpTask.Start()
                     threadCount += 1
-                    tmpTask.Start()
+                    process()
 
                 Next
             Next
@@ -430,74 +459,74 @@ EndDetect:
 
         Return
 
-        '第一次检测
-        '调整亮度
-        Dim avgBright As Single = 0.0F
-        For j = 0 To grayImg.Rows - 1
-            For i = 0 To grayImg.Cols - 1
-                avgBright = avgBright + CInt(grayImg.GetRawData(j, i)(0))
-            Next
-        Next
-        avgBright /= (grayImg.Rows * grayImg.Cols)
-        Dim ratio As Single = 128 / avgBright
-        For j = 0 To grayImg.Rows - 1
-            For i = 0 To grayImg.Cols - 1
-                Dim pixel As Byte = grayImg.GetRawData(j, i)(0)
-                Dim bright As Integer = pixel * ratio
-                If bright > 255 Then bright = 255
-                Mat_SetPixel_1(grayImg, j, i, bright)
-            Next
-        Next
-        Dim sobelMag As Mat = W4.GetEdgeMagnitude(grayImg)
+        ''第一次检测
+        ''调整亮度
+        'Dim avgBright As Single = 0.0F
+        'For j = 0 To grayImg.Rows - 1
+        '    For i = 0 To grayImg.Cols - 1
+        '        avgBright = avgBright + CInt(grayImg.GetRawData(j, i)(0))
+        '    Next
+        'Next
+        'avgBright /= (grayImg.Rows * grayImg.Cols)
+        'Dim ratio As Single = 128 / avgBright
+        'For j = 0 To grayImg.Rows - 1
+        '    For i = 0 To grayImg.Cols - 1
+        '        Dim pixel As Byte = grayImg.GetRawData(j, i)(0)
+        '        Dim bright As Integer = pixel * ratio
+        '        If bright > 255 Then bright = 255
+        '        Mat_SetPixel_1(grayImg, j, i, bright)
+        '    Next
+        'Next
+        'Dim sobelMag As Mat = W4.GetEdgeMagnitude(grayImg)
 
-        '1.正圆
-        Dim rawCircle As List(Of Single()) = MyHoughCircle(sobelMag)
-        Dim filterCircle As List(Of Single()) = CircleFilter(rawCircle)
-        If filterCircle.Count > 0 Then
-            '2. 直线
-            Dim rawLine As List(Of Single()) = MyHoughLine(sobelMag)
-            Dim filterLine As List(Of Single()) = LineFilter(rawLine)
+        ''1.正圆
+        'Dim rawCircle As List(Of Single()) = MyHoughCircle(sobelMag)
+        'Dim filterCircle As List(Of Single()) = CircleFilter(rawCircle)
+        'If filterCircle.Count > 0 Then
+        '    '2. 直线
+        '    Dim rawLine As List(Of Single()) = MyHoughLine(sobelMag)
+        '    Dim filterLine As List(Of Single()) = LineFilter(rawLine)
 
-            For Each tmpLine As Single() In filterLine
-                Dim dis As Single = tmpLine(0)
-                Dim theta As Single = tmpLine(1) * Math.PI / (180.0F)
+        '    For Each tmpLine As Single() In filterLine
+        '        Dim dis As Single = tmpLine(0)
+        '        Dim theta As Single = tmpLine(1) * Math.PI / (180.0F)
 
-                If tmpLine(1) = 90 OrElse tmpLine(1) = 270 Then
-                    Dim p1s As New Point(dis, 0)
-                    Dim p2s As New Point(dis, image.Rows - 1)
-                    Line(image, p1s, p2s, New MCvScalar(0, 0, 255))
-                Else
-                    Dim p1 As New Point(0, dis / Math.Cos(theta))
-                    Dim p2 As New Point(image.Cols - 1, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)))
-                    Line(image, p1, p2, New MCvScalar(0, 0, 255))
-                End If
-            Next
+        '        If tmpLine(1) = 90 OrElse tmpLine(1) = 270 Then
+        '            Dim p1s As New Point(dis, 0)
+        '            Dim p2s As New Point(dis, image.Rows - 1)
+        '            Line(image, p1s, p2s, New MCvScalar(0, 0, 255))
+        '        Else
+        '            Dim p1 As New Point(0, dis / Math.Cos(theta))
+        '            Dim p2 As New Point(image.Cols - 1, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)))
+        '            Line(image, p1, p2, New MCvScalar(0, 0, 255))
+        '        End If
+        '    Next
 
-            Dim line_intersect As Single() = ParseFeature_MultiLineIntersect(image.Width, image.Height, filterLine)
+        '    Dim line_intersect As Single() = ParseFeature_MultiLineIntersect(image.Width, image.Height, filterLine)
 
-            Circle(image, New Point(line_intersect(0), line_intersect(1)), 3, New MCvScalar(255, 0, 0), -1)
+        '    Circle(image, New Point(line_intersect(0), line_intersect(1)), 3, New MCvScalar(255, 0, 0), -1)
 
-            If line_intersect(0) > 0 Then
-                For Each tmpCircle As Single() In filterCircle
-                    Dim distance As Double = Math.Sqrt((tmpCircle(0) - line_intersect(0)) ^ 2 + (tmpCircle(1) - line_intersect(1)) ^ 2)
-                    If distance < 8 Then    '是dart board
-                        detectResult.Add({tmpCircle(0), tmpCircle(1), tmpCircle(2), tmpCircle(2)})
-                        CvInvoke.Rectangle(image, New Rectangle(tmpCircle(0) - tmpCircle(2),
-                           tmpCircle(1) - tmpCircle(2), tmpCircle(2) * 2, tmpCircle(2) * 2), New MCvScalar(0, 255, 255))
-                    End If
-                Next
-            End If
+        '    If line_intersect(0) > 0 Then
+        '        For Each tmpCircle As Single() In filterCircle
+        '            Dim distance As Double = Math.Sqrt((tmpCircle(0) - line_intersect(0)) ^ 2 + (tmpCircle(1) - line_intersect(1)) ^ 2)
+        '            If distance < 8 Then    '是dart board
+        '                detectResult.Add({tmpCircle(0), tmpCircle(1), tmpCircle(2), tmpCircle(2)})
+        '                CvInvoke.Rectangle(image, New Rectangle(tmpCircle(0) - tmpCircle(2),
+        '                   tmpCircle(1) - tmpCircle(2), tmpCircle(2) * 2, tmpCircle(2) * 2), New MCvScalar(0, 255, 255))
+        '            End If
+        '        Next
+        '    End If
 
-        End If
+        'End If
 
 
-        For Each circle As Single() In filterCircle
-            CvInvoke.Circle(image, New Point(circle(0), circle(1)), circle(2), New MCvScalar(0, 255, 0))
-        Next
-        Imshow("source", image)
-        Imwrite("C:\Users\asdfg\Desktop\ocvjtest\materials\result_401.png", image)
+        'For Each circle As Single() In filterCircle
+        '    CvInvoke.Circle(image, New Point(circle(0), circle(1)), circle(2), New MCvScalar(0, 255, 0))
+        'Next
+        'Imshow("source", image)
+        'Imwrite("C:\Users\asdfg\Desktop\ocvjtest\materials\result_401.png", image)
 
-        WaitKey(0)
+        'WaitKey(0)
 
     End Sub
 
@@ -632,7 +661,7 @@ EndDetect:
         Next
 
         Dim circleList As New List(Of Single())
-        If maxHoughValue > 100 Then
+        If maxHoughValue > 80 Then
             For r = maxR - 1 To 10 Step -1
                 For j = 0 To imageHeight - 1
                     For i = 0 To imageWidth - 1
@@ -655,7 +684,7 @@ EndDetect:
         Dim imageWidth As Integer = mag.Cols
         Dim houghSpaceR(imageWidth, imageHeight, 4) As MyGeneralHoughResult    '存储缩放信息
 
-        For rh = 35 To imageHeight
+        For rh = 45 To imageHeight
             Dim lb As Integer = rh / 3.0
             Dim ub As Integer = rh * 1.1
             If ub > imageWidth Then ub = imageWidth
@@ -693,8 +722,6 @@ EndDetect:
                         Next
                     Next
 
-                    If tmpMax < 40 Then Exit For
-
                     With houghSpaceR(rw, rh, k)
                         .X = tmpMaxArgs(0)
                         .Y = tmpMaxArgs(1)
@@ -714,8 +741,8 @@ EndDetect:
             Dim rMax As New MyGeneralHoughResult
             Dim rMaxScale(2) As Integer
             For k = 0 To 4
-                For j = 35 To imageHeight - 1
-                    For i = 11 To imageWidth - 1
+                For j = 45 To imageHeight - 1
+                    For i = 15 To imageWidth - 1
                         Dim value As Single = houghSpaceR(i, j, k).Value
                         If value > rMax.Value Then
                             rMax = houghSpaceR(i, j, k)
@@ -729,7 +756,7 @@ EndDetect:
 
             houghSpaceR(rMaxScale(0), rMaxScale(1), rMaxScale(2)).Value = 0.0F
 
-            If rMax.Value >= 40 Then
+            If rMax.Value >= 30 Then
                 Dim different As Boolean = True
                 For Each tmpEllipse As Single() In result
                     Dim distance As Double = Math.Sqrt((rMax.X - tmpEllipse(0)) ^ 2 + (rMax.Y - tmpEllipse(1)) ^ 2)
@@ -1176,8 +1203,9 @@ EndDetect:
 
     Public Function GetEdgeMagnitudeCanny(image As Mat) As Mat
         Dim result As New Mat
-        Blur(image, image, New Size(4, 4), New Point(-1, -1))
-        Canny(image, result, 4, 128)
+        'Blur(image, image, New Size(3, 3), New Point(-1, -1))
+        GaussianBlur(image, image, New Size(5, 5), 0)
+        Canny(image, result, 50, 168)
         Return result
     End Function
 
