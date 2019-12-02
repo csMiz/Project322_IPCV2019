@@ -396,13 +396,13 @@ Module W9
     ''' </summary>
     Public Async Sub S_L1T4()
 
-        Dim path As String = "C:\Users\sscs\Desktop\materials\dart14.jpg"
+        Dim path As String = "C:\Users\sscs\Desktop\materials\dart10.jpg"
         'Dim path As String = "C:\Users\asdfg\Desktop\ocvjtest\materials\dart10.jpg"
 
         Dim image As Mat = Imread(path, ImreadModes.Color)
         Dim grayImg As Mat = Imread(path, ImreadModes.Grayscale)
 
-        Dim winTest As Mat = GetSlidingWindow(grayImg, 550, 100, 150)
+        Dim winTest As Mat = GetSlidingWindow(grayImg, 850, 100, 150)
         Dim cannyTest As Mat = W9.GetEdgeMagnitudeCanny(winTest)
         'Threshold(sobelTest, sobelTest, 0.5, 1.0, ThresholdType.Binary)
         Dim tmpMag2 As New Mat
@@ -417,7 +417,7 @@ Module W9
 
         '用sliding window检测
         For windowSize_i As Integer = 150 To 150 Step -50
-            For windowX_i As Integer = 550 To 550 Step 25 '0 To grayImg.Cols - windowSize_i - 1 Step 25
+            For windowX_i As Integer = 850 To 850 Step 25 '0 To grayImg.Cols - windowSize_i - 1 Step 25
                 For windowY_i As Integer = 100 To 100 Step 25 '0 To grayImg.Rows - windowSize_i - 1 Step 25
 
                     Dim windowSize As Integer = windowSize_i
@@ -479,10 +479,16 @@ Module W9
                                               End If
                                           Next
                                           Dim tmpEll As Single() = rawEllipse(ellIndex)
+                                          'draw
+                                          CvInvoke.Ellipse(image, New RotatedRect(New PointF(windowX + tmpEll(0), windowY + tmpEll(1)), New SizeF(tmpEll(3) * 2, tmpEll(2) * 2), 0), New MCvScalar(0, 255, 255))
+
                                           '2.同心圆
                                           Dim concentric As Single = ParseFeature_ConcentricEllipse(tmpMag, rawEllipse(0))
                                           If concentric > 0 Then
                                               Debug.WriteLine("concentric: " & concentric)
+
+                                              CvInvoke.Ellipse(image, New RotatedRect(New PointF(windowX + tmpEll(0), windowY + tmpEll(1)),
+                                                                                      New SizeF(tmpEll(3) * 2 * concentric, tmpEll(2) * 2 * concentric), 0), New MCvScalar(0, 168, 255))
                                               'CvInvoke.Rectangle(image, New Drawing.Rectangle(windowX + tmpEll(0) - tmpEll(2) * concentric, windowY + tmpEll(1) - tmpEll(3) * concentric, tmpEll(2) * 2 * concentric, tmpEll(3) * 2 * concentric), New MCvScalar(0, 255, 0))
                                               '3.直线
                                               Dim rawLine As List(Of Single()) = MyHoughLine(tmpMag)
@@ -490,16 +496,16 @@ Module W9
                                               For Each tmpLine As Single() In filterLine
                                                   Dim dis As Single = tmpLine(0)
                                                   Dim theta As Single = tmpLine(1) * Math.PI / (180.0F)
-
-                                                  'If tmpLine(1) = 90 OrElse tmpLine(1) = 270 Then
-                                                  '    Dim p1s As New Point(Math.Abs(dis) + windowX, 0 + windowY)
-                                                  '    Dim p2s As New Point(Math.Abs(dis) + windowX, image.Rows - 1 + windowY)
-                                                  '    Line(image, p1s, p2s, New MCvScalar(0, 0, 255))
-                                                  'Else
-                                                  '    Dim p1 As New Point(0 + windowX, dis / Math.Cos(theta) + windowY)
-                                                  '    Dim p2 As New Point(image.Cols - 1 + windowX, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)) + windowY)
-                                                  '    Line(image, p1, p2, New MCvScalar(0, 0, 255))
-                                                  'End If
+                                                  'draw
+                                                  If tmpLine(1) = 90 OrElse tmpLine(1) = 270 Then
+                                                      Dim p1s As New Point(Math.Abs(dis) + windowX, 0 + windowY)
+                                                      Dim p2s As New Point(Math.Abs(dis) + windowX, image.Rows - 1 + windowY)
+                                                      Line(image, p1s, p2s, New MCvScalar(128, 128, 0))
+                                                  Else
+                                                      Dim p1 As New Point(0 + windowX, dis / Math.Cos(theta) + windowY)
+                                                      Dim p2 As New Point(image.Cols - 1 + windowX, (dis / Math.Cos(theta) - image.Cols * Math.Tan(theta)) + windowY)
+                                                      Line(image, p1, p2, New MCvScalar(128, 128, 0))
+                                                  End If
                                               Next
                                               Dim ifIntersect As Boolean = ParseFeature_MultiLineIntersect_Verify(tmpEll(0), tmpEll(1), filterLine)
                                               If ifIntersect Then
@@ -799,7 +805,7 @@ EndDetect:
         Dim imageWidth As Integer = mag.Cols
         Dim houghSpaceR(imageWidth, imageHeight, 4) As MyGeneralHoughResult    '存储缩放信息
 
-        For rh = 45 To imageHeight
+        For rh = 45 To CInt(imageHeight / 1.5)
             Dim lb As Integer = rh / 3.0
             Dim ub As Integer = rh * 1.1
             If ub > imageWidth Then ub = imageWidth
