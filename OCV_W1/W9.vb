@@ -402,13 +402,13 @@ Module W9
         Dim image As Mat = Imread(path, ImreadModes.Color)
         Dim grayImg As Mat = Imread(path, ImreadModes.Grayscale)
 
-        Dim winTest As Mat = GetSlidingWindow(grayImg, 850, 100, 150)
-        Dim cannyTest As Mat = W9.GetEdgeMagnitudeCanny(winTest)
-        'Threshold(sobelTest, sobelTest, 0.5, 1.0, ThresholdType.Binary)
-        Dim tmpMag2 As New Mat
-        cannyTest.ConvertTo(tmpMag2, DepthType.Cv32F, 1.0 / 255, 0)
-        Imshow("st", tmpMag2)
-        WaitKey(0)
+        'Dim winTest As Mat = GetSlidingWindow(grayImg, 850, 100, 150)
+        'Dim cannyTest As Mat = W9.GetEdgeMagnitudeCanny(winTest)
+        ''Threshold(sobelTest, sobelTest, 0.5, 1.0, ThresholdType.Binary)
+        'Dim tmpMag2 As New Mat
+        'cannyTest.ConvertTo(tmpMag2, DepthType.Cv32F, 1.0 / 255, 0)
+        'Imshow("st", tmpMag2)
+        'WaitKey(0)
 
         'Dim sample As MyHoughSample2 = S_LoadSample2()
         Dim detectResult As New List(Of Single())
@@ -417,8 +417,8 @@ Module W9
 
         '用sliding window检测
         For windowSize_i As Integer = 150 To 150 Step -50
-            For windowX_i As Integer = 850 To 850 Step 25 '0 To grayImg.Cols - windowSize_i - 1 Step 25
-                For windowY_i As Integer = 100 To 100 Step 25 '0 To grayImg.Rows - windowSize_i - 1 Step 25
+            For windowX_i As Integer = 0 To grayImg.Cols - windowSize_i - 1 Step 25
+                For windowY_i As Integer = 0 To grayImg.Rows - windowSize_i - 1 Step 25
 
                     Dim windowSize As Integer = windowSize_i
                     Dim windowX As Integer = windowX_i
@@ -768,6 +768,9 @@ EndDetect:
                     Next
                 End If
             Next
+            If j Mod 10 = 0 Then
+                Debug.WriteLine("Matching circle: " & j & "/" & (imageHeight - 1))
+            End If
         Next
 
         Dim maxHoughValue As Integer = 0

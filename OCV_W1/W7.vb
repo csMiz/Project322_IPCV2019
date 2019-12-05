@@ -64,9 +64,9 @@ Module W7
                 Mat_SetPixel_1(blueChan, j, i, v(0))
             Next
         Next
-        Dim mag_r As Mat = W9.GetEdgeMagnitude(redChan)
-        Dim mag_g As Mat = W9.GetEdgeMagnitude(greenChan)
-        Dim mag_b As Mat = W9.GetEdgeMagnitude(blueChan)
+        Dim mag_r As Mat = W4.GetEdgeMagnitude(redChan)
+        Dim mag_g As Mat = W4.GetEdgeMagnitude(greenChan)
+        Dim mag_b As Mat = W4.GetEdgeMagnitude(blueChan)
         Dim mag As New Mat(image.Size, DepthType.Cv32F, 1)
         For j = 0 To image.Rows - 1
             For i = 0 To image.Cols - 1
